@@ -378,7 +378,8 @@ void playGame(const GameConfig& config, int levelId) {
         int j = rand() % (i + 1);
         swap(board[i], board[j]);
     }
-int peekDuration = 0;
+    
+    int peekDuration = 0;
     if (config.levelName == "Mudah") peekDuration = 5;
     else if (config.levelName == "Sedang") peekDuration = 7;
     else if (config.levelName == "Sulit") peekDuration = 10;
