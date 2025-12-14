@@ -378,3 +378,330 @@ void playGame(const GameConfig& config, int levelId) {
         int j = rand() % (i + 1);
         swap(board[i], board[j]);
     }
+int peekDuration = 0;
+    if (config.levelName == "Mudah") peekDuration = 5;
+    else if (config.levelName == "Sedang") peekDuration = 7;
+    else if (config.levelName == "Sulit") peekDuration = 10;
+
+    showStartGameAnimation(config.levelName, config.rows, config.cols);
+
+    peekCards(config, board, peekDuration);
+
+
+    vector<bool> matched(totalCards, false);
+
+    int steps = 0;
+    int cursorRow = 0;
+    int cursorCol = 0;
+
+    int firstIndex  = -1;
+    int secondIndex = -1;
+
+    int matchedPairs = 0;
+    bool surrendered = false;
+    bool timedOut = false;
+
+    time_t startTime = time(0);
+
+    auto drawBoard = [&]() {
+        clear();
+        box(stdscr, 0, 0);
+
+        time_t currentTime = time(0);
+        long elapsed = currentTime - startTime;
+        long timeRemaining = config.timeLimitSeconds - elapsed;
+
+        if (timeRemaining <= 0) {
+            timedOut = true;
+            return;
+        }
+
+        int minutes = timeRemaining / 60;
+        int seconds = timeRemaining % 60;
+
+        mvprintw(1, 2, "Level: %s | Langkah: %d | Pasangan: %d/%d",
+                 config.levelName.c_str(), steps, matchedPairs, totalPairs);
+
+        if (timeRemaining <= 10) {
+            if (has_colors()) attron(COLOR_PAIR(2) | A_BOLD);
+        }
+        mvprintw(2, 2, "Waktu Sisa: %02d:%02d", minutes, seconds);
+        if (timeRemaining <= 10 && has_colors()) {
+            attroff(COLOR_PAIR(2) | A_BOLD);
+        }
+
+        mvprintw(3, 2, "Panah: gerak | ENTER/Spasi: pilih | q: menyerah");
+
+
+        for (int r = 0; r < config.rows; ++r) {
+            for (int c = 0; c < config.cols; ++c) {
+                int index = r * config.cols + c;
+                int y = 5 + r * 2;
+                int x = 4 + c * 6;
+
+                bool isCursor      = (r == cursorRow && c == cursorCol);
+                bool isRevealed = matched[index] ||
+                                              (index == firstIndex) ||
+                                              (index == secondIndex);
+
+                if (isCursor) {
+                    attron(A_REVERSE);
+                }
+
+                if (matched[index]) {
+                    attron(A_BOLD);
+                }
+
+                if (isRevealed) {
+                    mvprintw(y, x, "[%2d]", board[index]);
+                } else {
+                    mvprintw(y, x, "[??]");
+                }
+
+                if (isCursor) {
+                    attroff(A_REVERSE);
+                }
+                if (matched[index]) {
+                    attroff(A_BOLD);
+                }
+            }
+        }
+
+        refresh();
+    };
+
+    while (matchedPairs < totalPairs && !surrendered && !timedOut) {
+        drawBoard();
+        if (timedOut) break;
+
+        int ch = getch();
+
+        if (ch == 'q' || ch == 'Q') {
+            surrendered = true;
+            break;
+        }
+
+        if (ch != ERR) {
+            switch (ch) {
+                case KEY_UP:
+                    if (cursorRow > 0) cursorRow--;
+                    break;
+                case KEY_DOWN:
+                    if (cursorRow < config.rows - 1) cursorRow++;
+                    break;
+                case KEY_LEFT:
+                    if (cursorCol > 0) cursorCol--;
+                    break;
+                case KEY_RIGHT:
+                    if (cursorCol < config.cols - 1) cursorCol++;
+                    break;
+                case ' ':
+                case '\n':
+                case KEY_ENTER: {
+                    int idx = cursorRow * config.cols + cursorCol;
+
+                    if (matched[idx]) break;
+
+                    if (firstIndex == -1) {
+                        firstIndex = idx;
+                    }
+                    else if (secondIndex == -1 && idx != firstIndex) {
+                        secondIndex = idx;
+                        steps++;
+
+                        drawBoard();
+                        delay_ms(800);
+
+                        if (board[firstIndex] == board[secondIndex]) {
+                            matched[firstIndex]  = true;
+                            matched[secondIndex] = true;
+                            matchedPairs++;
+                        }
+
+                        firstIndex  = -1;
+                        secondIndex = -1;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+
+    timeout(-1);
+
+    if (surrendered) {
+        showGameOverAnimation("Anda Menyerah. Kembali ke Menu Utama...");
+        return;
+    }
+
+    if (timedOut) {
+        showGameOverAnimation("WAKTU HABIS! Anda Gagal Mencocokkan Semua Pasangan.");
+        return;
+    }
+
+    for (int i = 0; i < totalCards; ++i) {
+        matched[i] = true;
+    }
+    drawBoard();
+    delay_ms(1500);
+
+    showWinAnimation(steps);
+
+    echo();
+    curs_set(1);
+
+    char playerName[50];
+
+    clear();
+    box(stdscr, 0, 0);
+    mvprintw(4, 4, "Selamat, semua pasangan ditemukan!");
+    mvprintw(5, 4, "Total langkah: %d (Level: %s)", steps, config.levelName.c_str());
+    mvprintw(7, 4, "Masukkan Nama Anda (Maks 49 karakter, spasi akan diubah menjadi underscore): ");
+    refresh();
+
+    getnstr(playerName, 49);
+
+    saveScore(string(playerName), steps, levelId);
+
+    noecho();
+    curs_set(0);
+
+    mvprintw(9, 4, "Score tersimpan! Tekan tombol apa saja untuk kembali ke menu...");
+    refresh();
+    getch();
+}
+
+void delay_ms(int ms) {
+    napms(ms);
+}
+
+void showSplashScreen() {
+    const int Y_CENTER = LINES / 2;
+    const int X_CENTER = COLS / 2;
+    const int DELAY = 100;
+
+    clear();
+    refresh();
+
+    mvprintw(Y_CENTER, X_CENTER - 10, "* *");
+    refresh();
+    delay_ms(DELAY * 3);
+
+    mvprintw(Y_CENTER, X_CENTER - 10, "* MEMORIZE *");
+    refresh();
+    delay_ms(DELAY * 5);
+
+    mvprintw(Y_CENTER,      X_CENTER - 10, "* MEMORIZE *");
+    mvprintw(Y_CENTER + 1, X_CENTER - 10, "* GAME     *");
+    refresh();
+    delay_ms(DELAY * 5);
+
+    mvprintw(Y_CENTER + 3, X_CENTER - 5, "LOADING...");
+    refresh();
+    delay_ms(DELAY * 10);
+}
+
+void showWinAnimation(int final_steps) {
+    const int Y_CENTER = LINES / 2;
+    const int X_CENTER = COLS / 2;
+    const int DELAY = 100;
+
+    for (int i = 0; i < 4; ++i) {
+        clear();
+        if (has_colors()) attron(COLOR_PAIR(1) | A_BOLD);
+        mvprintw(Y_CENTER, X_CENTER - 15 - i, "~~~ PASANGAN DITEMUKAN! ~~~");
+        if (has_colors()) attroff(COLOR_PAIR(1) | A_BOLD);
+        refresh();
+        delay_ms(DELAY);
+    }
+
+    clear();
+    if (has_colors()) attron(COLOR_PAIR(1) | A_BOLD);
+    mvprintw(Y_CENTER, X_CENTER - 15, "~~~ PASANGAN DITEMUKAN! ~~~");
+    if (has_colors()) attroff(COLOR_PAIR(1) | A_BOLD);
+
+
+    mvprintw(Y_CENTER + 3, X_CENTER - 20,
+             "SELAMAT! Anda menang dalam %d langkah!", final_steps);
+    mvprintw(Y_CENTER + 5, X_CENTER - 20,
+             "Tekan tombol apa saja untuk lanjut...");
+    refresh();
+    getch();
+}
+
+void showGameOverAnimation(const string& message) {
+    const int Y_CENTER = LINES / 2;
+    const int X_CENTER = COLS / 2;
+    const int DELAY = 200;
+
+    clear();
+    refresh();
+
+    for (int i = 0; i < 5; ++i) {
+        if (has_colors()) attron(COLOR_PAIR(2) | A_BOLD);
+        mvprintw(Y_CENTER, X_CENTER - 5, "GAME OVER");
+        if (has_colors()) attroff(COLOR_PAIR(2) | A_BOLD);
+        refresh();
+        delay_ms(DELAY);
+
+        mvprintw(Y_CENTER, X_CENTER - 5, "         ");
+        refresh();
+        delay_ms(DELAY);
+    }
+
+    if (has_colors()) attron(COLOR_PAIR(2) | A_BOLD);
+    mvprintw(Y_CENTER,      X_CENTER - 5, "GAME OVER");
+    if (has_colors()) attroff(COLOR_PAIR(2) | A_BOLD);
+
+    mvprintw(Y_CENTER + 2, X_CENTER - (int)message.length() / 2, message.c_str());
+
+    mvprintw(Y_CENTER + 4, X_CENTER - 12, "Tekan tombol apa saja untuk kembali...");
+    refresh();
+    getch();
+}
+
+
+void showExitAnimation() {
+    const int Y_START = LINES - 2;
+    const int Y_CENTER = LINES / 2;
+    const int X_CENTER = COLS / 2;
+    const int DELAY = 80;
+
+    const char* message1 = "Terima Kasih telah Bermain!";
+    const char* message2 = "Sampai Jumpa...";
+
+    for (int y = Y_START; y >= Y_CENTER; --y) {
+        clear();
+
+        int x1 = X_CENTER - (int)strlen(message1) / 2;
+        int x2 = X_CENTER - (int)strlen(message2) / 2;
+
+        attron(A_DIM);
+        mvprintw(y, x1, message1);
+        mvprintw(y + 2, x2, message2);
+        attroff(A_DIM);
+
+        refresh();
+        delay_ms(DELAY);
+    }
+
+    delay_ms(DELAY * 10);
+
+    for (int i = 0; i < 3; ++i) {
+        clear();
+        refresh();
+        delay_ms(DELAY * 3);
+
+        attron(A_BOLD);
+        mvprintw(Y_CENTER, X_CENTER - (int)strlen(message1) / 2, message1);
+        mvprintw(Y_CENTER + 2, X_CENTER - (int)strlen(message2) / 2, message2);
+        attroff(A_BOLD);
+        refresh();
+        delay_ms(DELAY * 3);
+    }
+
+    clear();
+    refresh();
+}
